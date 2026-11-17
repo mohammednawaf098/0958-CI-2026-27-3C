@@ -1,0 +1,247 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import kagglehub
+import os
+
+# Download latest version
+path = kagglehub.dataset_download("himanshupoddar/zomato-bangalore-restaurants")
+
+print("Path to dataset files:", path)
+
+# Set visualization style
+sns.set_style("whitegrid")
+
+print("Libraries imported successfully!")
+
+# Construct the correct path to zomato.csv
+csv_path = os.path.join(path, "zomato.csv")
+df = pd.read_csv(csv_path)
+
+# Display first five records
+display(df.head())
+
+# Dataset dimensions
+print("Dataset Shape:", df.shape)
+
+# Column names
+print("\nColumn Names:")
+print(df.columns.tolist())
+
+# Dataset information
+df.info()
+
+# Statistical summary
+display(df.describe(include="all"))
+
+# Count null values in each column
+print(df.isnull().sum())
+
+# Calculate percentage of missing values
+missing_percentage = (df.isnull().sum() / len(df)) * 100
+
+print("\nMissing Value Percentage:")
+print(missing_percentage.sort_values(ascending=False))
+
+plt.figure(figsize=(12, 6))
+sns.heatmap(
+    df.isnull(),
+    cbar=False,
+    cmap="viridis"
+)
+plt.title("Missing Values in Zomato Dataset")
+plt.show()
+
+# Remove unnecessary columns if present
+columns_to_drop = [
+    'url',
+    'phone',
+    'menu_item',
+    'reviews_list',
+    'dish_liked'
+]
+
+df.drop(
+    columns=columns_to_drop,
+    inplace=True,
+    errors='ignore'
+)
+
+print("Unnecessary columns removed.")
+df.columns = df.columns.str.strip()
+
+# Convert rating into numeric values
+df['rate'] = (
+    df['rate']
+    .astype(str)
+    .str.extract(r'(\d+\.?\d*)')[0]
+)
+
+df['rate'] = pd.to_numeric(
+    df['rate'],
+    errors='coerce'
+)
+
+cost_column = 'approx_cost(for two people)'
+if cost_column in df.columns:
+    df[cost_column] = (
+        df[cost_column]
+        .astype(str)
+        .str.replace(',', '', regex=False)
+    )
+    df[cost_column] = pd.to_numeric(
+        df[cost_column],
+        errors='coerce'
+    )
+
+df['votes'] = pd.to_numeric(
+    df['votes'],
+    errors='coerce'
+)
+
+# Identify numerical columns
+numerical_columns = df.select_dtypes(
+    include=np.number
+).columns
+
+print("Numerical Columns:", numerical_columns.tolist())
+
+# Apply mean imputation
+for col in numerical_columns:
+    df[col] = df[col].fillna(
+        df[col].mean()
+    )
+
+print("Mean imputation completed!")
+print("Missing Values After Imputation:")
+print(df[numerical_columns].isnull().sum())
+
+categorical_columns = df.select_dtypes(
+    include='object'
+).columns
+
+for col in categorical_columns:
+    if df[col].isnull().sum() > 0:
+        mode_value = df[col].mode()
+        if not mode_value.empty:
+            df[col] = df[col].fillna(mode_value[0])
+
+print("Categorical missing values handled.")
+
+def rating_category(rating):
+    if rating >= 4.0:
+        return "Excellent"
+    elif rating >= 3.0:
+        return "Good"
+    else:
+        return "Average"
+
+df['rating_category'] = df['rate'].apply(
+    rating_category
+)
+
+display(df[['name', 'rate', 'rating_category']].head())
+
+def cost_category(cost):
+    if cost < 500:
+        return "Budget"
+    elif cost < 1500:
+        return "Moderate"
+    else:
+        return "Expensive"
+
+df['cost_category'] = df[
+    'approx_cost(for two people)'
+].apply(cost_category)
+
+display(df[['name', 'cost_category']].head())
+
+top_locations = df['location'].value_counts().head(10)
+print(top_locations)
+
+plt.figure(figsize=(12, 6))
+top_locations.plot(
+    kind='bar',
+    color='skyblue'
+)
+plt.title("Top 10 Locations by Number of Restaurants")
+plt.xlabel("Location")
+plt.ylabel("Number of Restaurants")
+plt.xticks(rotation=45)
+plt.show()
+
+average_rating = df['rate'].mean()
+print("Average Restaurant Rating:", round(average_rating, 2))
+
+online_order_count = df['online_order'].value_counts()
+plt.figure(figsize=(7, 5))
+online_order_count.plot(
+    kind='pie',
+    autopct='%1.1f%%',
+    colors=['lightgreen', 'orange']
+)
+plt.title("Online Ordering Availability")
+plt.ylabel("")
+plt.show()
+
+cost_column = 'approx_cost(for two people)'
+avg_cost = df.groupby(
+    'rest_type'
+)[cost_column].mean().sort_values(
+    ascending=False
+).head(10)
+
+plt.figure(figsize=(12, 6))
+avg_cost.plot(
+    kind='bar',
+    color='coral'
+)
+plt.title("Top 10 Restaurant Types by Average Cost")
+plt.xlabel("Restaurant Type")
+plt.ylabel("Average Cost for Two")
+plt.xticks(rotation=45)
+plt.show()
+
+plt.figure(figsize=(10, 5))
+sns.histplot(
+    df['rate'],
+    bins=20,
+    kde=True,
+    color='purple'
+)
+plt.title("Distribution of Restaurant Ratings")
+plt.xlabel("Restaurant Rating")
+plt.ylabel("Number of Restaurants")
+plt.show()
+
+plt.figure(figsize=(10, 6))
+sns.scatterplot(
+    data=df,
+    x='votes',
+    y='rate',
+    alpha=0.5
+)
+plt.title("Relationship Between Votes and Ratings")
+plt.xlabel("Number of Votes")
+plt.ylabel("Restaurant Rating")
+plt.show()
+
+plt.figure(figsize=(8, 6))
+correlation = df.select_dtypes(
+    include=np.number
+).corr()
+sns.heatmap(
+    correlation,
+    annot=True,
+    cmap='coolwarm',
+    fmt='.2f'
+)
+plt.title("Correlation Between Numerical Variables")
+plt.show()
+
+df.to_csv(
+    "cleaned_zomato.csv",
+    index=False
+)
+print("Cleaned dataset saved successfully!")
